@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="aloha" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <material name="interbotix_black">
+    <texture filename="package://interbotix_xsarm_descriptions/meshes/interbotix_black.png"/>
+  </material>
+
+  <link name="world" />
+
+  <joint name="fixed" type="fixed">
+    <parent
+      link="world" />
+    <child
+      link=""/>
+  </joint>
+
+</robot>

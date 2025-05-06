@@ -1,0 +1,6 @@
+python3 imitate_episodes.py --task_name aloha_test_move_water \
+    --ckpt_dir ~/aloha_data/models/diff_1108 \
+    --policy_class Diffusion \
+    --kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 16 \
+    --dim_feedforward 3200 --num_steps 100000 --lr 2e-5 --seed 0 \
+    --eval --onscreen_render 

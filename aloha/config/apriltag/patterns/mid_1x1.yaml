@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    # The offset from the center of the tag to the center of the marker in the tag frame
+    # x - pointing to the right from the center of the tag
+    # y - pointing downwards from the center of the tag
+    # z - pointing inwards from the center of the tag
+    origin_topic: "/aloha/apriltag"
+    origin_frame_id: "apriltag_origin"
+    offset_ids:
+      - 0
+    offset_0:
+      - 0.0
+      - 0.0
+      - 0.0
