@@ -31,54 +31,59 @@ class ImageRecorder:
         self.bridge = CvBridge()
 
         if is_mobile:
-            self.camera_names = ['cam_high', 'cam_left_wrist', 'cam_right_wrist']
+            self.camera_names = ["cam_high", "cam_left_wrist", "cam_right_wrist"]
         else:
-            self.camera_names = ['cam_high', 'cam_low', 'cam_left_wrist', 'cam_right_wrist']
-        
+            self.camera_names = [
+                "cam_high",
+                "cam_low",
+                "cam_left_wrist",
+                "cam_right_wrist",
+            ]
+
         # self.camera_names = ['cam_high']
 
         for cam_name in self.camera_names:
-            setattr(self, f'{cam_name}_color', None)
-            setattr(self, f'{cam_name}_depth', None)
-            setattr(self, f'{cam_name}_color_camera_info', None)
-            setattr(self, f'{cam_name}_depth_camera_info', None)
-            setattr(self, f'{cam_name}_secs', None)
-            setattr(self, f'{cam_name}_nsecs', None)
-            if cam_name == 'cam_high':
+            setattr(self, f"{cam_name}_color", None)
+            setattr(self, f"{cam_name}_depth", None)
+            setattr(self, f"{cam_name}_color_camera_info", None)
+            setattr(self, f"{cam_name}_depth_camera_info", None)
+            setattr(self, f"{cam_name}_secs", None)
+            setattr(self, f"{cam_name}_nsecs", None)
+            if cam_name == "cam_high":
                 callback_func = self.image_cb_cam_high
-            elif cam_name == 'cam_low':
+            elif cam_name == "cam_low":
                 callback_func = self.image_cb_cam_low
-            elif cam_name == 'cam_left_wrist':
+            elif cam_name == "cam_left_wrist":
                 callback_func = self.image_cb_cam_left_wrist
-            elif cam_name == 'cam_right_wrist':
+            elif cam_name == "cam_right_wrist":
                 callback_func = self.image_cb_cam_right_wrist
             else:
                 raise NotImplementedError
             topic = COLOR_IMAGE_TOPIC_NAME.format(cam_name)
             node.create_subscription(Image, topic, callback_func, 20)
-            
-            if cam_name == 'cam_high':
+
+            if cam_name == "cam_high":
                 callback_func = self.depth_cb_cam_high
-            elif cam_name == 'cam_low':
+            elif cam_name == "cam_low":
                 callback_func = self.depth_cb_cam_low
-            elif cam_name == 'cam_left_wrist':
+            elif cam_name == "cam_left_wrist":
                 callback_func = self.depth_cb_cam_left_wrist
-            elif cam_name == 'cam_right_wrist':
+            elif cam_name == "cam_right_wrist":
                 callback_func = self.depth_cb_cam_right_wrist
             else:
                 raise NotImplementedError
             topic = DEPTH_TOPIC_NAME.format(cam_name)
             node.create_subscription(Image, topic, callback_func, 20)
             if self.is_debug:
-                setattr(self, f'{cam_name}_timestamps', deque(maxlen=50))
+                setattr(self, f"{cam_name}_timestamps", deque(maxlen=50))
         time.sleep(0.5)
 
     def image_cb(self, cam_name: str, data: Image):
         # print("image_cb")
         setattr(
             self,
-            f'{cam_name}_color',
-            self.bridge.imgmsg_to_cv2(data, desired_encoding='passthrough')
+            f"{cam_name}_color",
+            self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough"),
         )
         # setattr(
         #     self,
@@ -87,68 +92,66 @@ class ImageRecorder:
         # )
         # setattr(self, f'{cam_name}_depth_camera_info', data.depth_camera_info)
         # setattr(self, f'{cam_name}_color_camera_info', data.rgb_camera_info)
-        setattr(self, f'{cam_name}_secs', data.header.stamp.sec)
-        setattr(self, f'{cam_name}_nsecs', data.header.stamp.nanosec)
+        setattr(self, f"{cam_name}_secs", data.header.stamp.sec)
+        setattr(self, f"{cam_name}_nsecs", data.header.stamp.nanosec)
         if self.is_debug:
-            getattr(
-                self,
-                f'{cam_name}_timestamps'
-            ).append(data.header.stamp.sec + data.header.stamp.sec * 1e-9)
+            getattr(self, f"{cam_name}_timestamps").append(
+                data.header.stamp.sec + data.header.stamp.sec * 1e-9
+            )
 
     def image_cb_cam_high(self, data):
-        cam_name = 'cam_high'
+        cam_name = "cam_high"
         return self.image_cb(cam_name, data)
 
     def image_cb_cam_low(self, data):
-        cam_name = 'cam_low'
+        cam_name = "cam_low"
         return self.image_cb(cam_name, data)
 
     def image_cb_cam_left_wrist(self, data):
-        cam_name = 'cam_left_wrist'
+        cam_name = "cam_left_wrist"
         return self.image_cb(cam_name, data)
 
     def image_cb_cam_right_wrist(self, data):
-        cam_name = 'cam_right_wrist'
+        cam_name = "cam_right_wrist"
         return self.image_cb(cam_name, data)
-    
+
     def depth_cb(self, cam_name: str, data: Image):
         setattr(
             self,
-            f'{cam_name}_depth',
-            self.bridge.imgmsg_to_cv2(data, desired_encoding='passthrough')
+            f"{cam_name}_depth",
+            self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough"),
         )
-        setattr(self, f'{cam_name}_secs', data.header.stamp.sec)
-        setattr(self, f'{cam_name}_nsecs', data.header.stamp.nanosec)
+        setattr(self, f"{cam_name}_secs", data.header.stamp.sec)
+        setattr(self, f"{cam_name}_nsecs", data.header.stamp.nanosec)
         if self.is_debug:
-            getattr(
-                self,
-                f'{cam_name}_timestamps'
-            ).append(data.header.stamp.sec + data.header.stamp.sec * 1e-9)
+            getattr(self, f"{cam_name}_timestamps").append(
+                data.header.stamp.sec + data.header.stamp.sec * 1e-9
+            )
 
     def depth_cb_cam_high(self, data):
-        cam_name = 'cam_high'
+        cam_name = "cam_high"
         return self.depth_cb(cam_name, data)
 
     def depth_cb_cam_low(self, data):
-        cam_name = 'cam_low'
+        cam_name = "cam_low"
         return self.depth_cb(cam_name, data)
 
     def depth_cb_cam_left_wrist(self, data):
-        cam_name = 'cam_left_wrist'
+        cam_name = "cam_left_wrist"
         return self.depth_cb(cam_name, data)
 
     def depth_cb_cam_right_wrist(self, data):
-        cam_name = 'cam_right_wrist'
+        cam_name = "cam_right_wrist"
         return self.depth_cb(cam_name, data)
 
     def get_images(self):
         image_dict = {}
         for cam_name in self.camera_names:
             image_dict[cam_name] = {
-                'color': getattr(self, f'{cam_name}_color'),
-                'depth': getattr(self, f'{cam_name}_depth'),
-                'color_camera_info': getattr(self, f'{cam_name}_color_camera_info'),
-                'depth_camera_info': getattr(self, f'{cam_name}_depth_camera_info'),
+                "color": getattr(self, f"{cam_name}_color"),
+                "depth": getattr(self, f"{cam_name}_depth"),
+                "color_camera_info": getattr(self, f"{cam_name}_color_camera_info"),
+                "depth_camera_info": getattr(self, f"{cam_name}_depth_camera_info"),
             }
         return image_dict
 
@@ -157,9 +160,10 @@ class ImageRecorder:
             ts = np.array(ts)
             diff = ts[1:] - ts[:-1]
             return np.mean(diff)
+
         for cam_name in self.camera_names:
-            image_freq = 1 / dt_helper(getattr(self, f'{cam_name}_timestamps'))
-            print(f'{cam_name} {image_freq=:.2f}')
+            image_freq = 1 / dt_helper(getattr(self, f"{cam_name}_timestamps"))
+            print(f"{cam_name} {image_freq=:.2f}")
         print()
 
 
@@ -180,19 +184,19 @@ class Recorder:
 
         node.create_subscription(
             JointState,
-            f'/follower_{side}/joint_states',
+            f"/follower_{side}/joint_states",
             self.follower_state_cb,
             10,
         )
         node.create_subscription(
             JointGroupCommand,
-            f'/follower_{side}/commands/joint_group',
+            f"/follower_{side}/commands/joint_group",
             self.follower_arm_commands_cb,
             10,
         )
         node.create_subscription(
             JointSingleCommand,
-            f'/follower_{side}/commands/joint_single',
+            f"/follower_{side}/commands/joint_single",
             self.follower_gripper_commands_cb,
             10,
         )
@@ -230,7 +234,9 @@ class Recorder:
         arm_command_freq = 1 / dt_helper(self.arm_command_timestamps)
         gripper_command_freq = 1 / dt_helper(self.gripper_command_timestamps)
 
-        print(f'{joint_freq=:.2f}\n{arm_command_freq=:.2f}\n{gripper_command_freq=:.2f}\n')
+        print(
+            f"{joint_freq=:.2f}\n{arm_command_freq=:.2f}\n{gripper_command_freq=:.2f}\n"
+        )
 
 
 def get_arm_joint_positions(bot: InterbotixManipulatorXS):
@@ -251,7 +257,8 @@ def move_arms(
     curr_pose_list = [get_arm_joint_positions(bot) for bot in bot_list]
     zipped_lists = zip(curr_pose_list, target_pose_list)
     traj_list = [
-        np.linspace(curr_pose, target_pose, num_steps) for curr_pose, target_pose in zipped_lists
+        np.linspace(curr_pose, target_pose, num_steps)
+        for curr_pose, target_pose in zipped_lists
     ]
     for t in range(num_steps):
         for bot_id, bot in enumerate(bot_list):
@@ -274,26 +281,28 @@ def sleep_arms(
         move_arms(
             bot_list,
             [[0.0, -0.96, 1.16, 0.0, -0.3, 0.0]] * len(bot_list),
-            moving_time=moving_time
+            moving_time=moving_time,
         )
     move_arms(
         bot_list,
         [bot.arm.group_info.joint_sleep_positions for bot in bot_list],
         moving_time=moving_time,
     )
-    print(bot_list[0].arm.group_info.joint_sleep_positions)
+    # print(bot_list[0].arm.group_info.joint_sleep_positions)
+
 
 def move_grippers(
     bot_list: Sequence[InterbotixManipulatorXS],
     target_pose_list: Sequence[float],
     moving_time: float,
 ):
-    gripper_command = JointSingleCommand(name='gripper')
+    gripper_command = JointSingleCommand(name="gripper")
     num_steps = int(moving_time / DT)
     curr_pose_list = [get_arm_gripper_positions(bot) for bot in bot_list]
     zipped_lists = zip(curr_pose_list, target_pose_list)
     traj_list = [
-        np.linspace(curr_pose, target_pose, num_steps) for curr_pose, target_pose in zipped_lists
+        np.linspace(curr_pose, target_pose, num_steps)
+        for curr_pose, target_pose in zipped_lists
     ]
     for t in range(num_steps):
         for bot_id, bot in enumerate(bot_list):
@@ -303,41 +312,41 @@ def move_grippers(
 
 
 def setup_follower_bot(bot: InterbotixManipulatorXS):
-    bot.core.robot_reboot_motors('single', 'gripper', True)
-    bot.core.robot_set_operating_modes('group', 'arm', 'position')
-    bot.core.robot_set_operating_modes('single', 'gripper', 'current_based_position')
+    bot.core.robot_reboot_motors("single", "gripper", True)
+    bot.core.robot_set_operating_modes("group", "arm", "position")
+    bot.core.robot_set_operating_modes("single", "gripper", "current_based_position")
     torque_on(bot)
 
 
 def setup_leader_bot(bot: InterbotixManipulatorXS):
-    bot.core.robot_set_operating_modes('group', 'arm', 'pwm')
-    bot.core.robot_set_operating_modes('single', 'gripper', 'current_based_position')
+    bot.core.robot_set_operating_modes("group", "arm", "pwm")
+    bot.core.robot_set_operating_modes("single", "gripper", "current_based_position")
     torque_off(bot)
 
 
 def set_standard_pid_gains(bot: InterbotixManipulatorXS):
-    bot.core.robot_set_motor_registers('group', 'arm', 'Position_P_Gain', 800)
-    bot.core.robot_set_motor_registers('group', 'arm', 'Position_I_Gain', 0)
+    bot.core.robot_set_motor_registers("group", "arm", "Position_P_Gain", 800)
+    bot.core.robot_set_motor_registers("group", "arm", "Position_I_Gain", 0)
 
 
 def set_low_pid_gains(bot: InterbotixManipulatorXS):
-    bot.core.robot_set_motor_registers('group', 'arm', 'Position_P_Gain', 100)
-    bot.core.robot_set_motor_registers('group', 'arm', 'Position_I_Gain', 0)
+    bot.core.robot_set_motor_registers("group", "arm", "Position_P_Gain", 100)
+    bot.core.robot_set_motor_registers("group", "arm", "Position_I_Gain", 0)
 
 
 def torque_off(bot: InterbotixManipulatorXS):
-    bot.core.robot_torque_enable('group', 'arm', False)
-    bot.core.robot_torque_enable('single', 'gripper', False)
+    bot.core.robot_torque_enable("group", "arm", False)
+    bot.core.robot_torque_enable("single", "gripper", False)
 
 
 def torque_on(bot: InterbotixManipulatorXS):
-    bot.core.robot_torque_enable('group', 'arm', True)
-    bot.core.robot_torque_enable('single', 'gripper', True)
+    bot.core.robot_torque_enable("group", "arm", True)
+    bot.core.robot_torque_enable("single", "gripper", True)
 
 
 def calibrate_linear_vel(base_action, c=None):
     if c is None:
-        c = 0.
+        c = 0.0
     v = base_action[..., 0]
     w = base_action[..., 1]
     base_action = base_action.copy()
@@ -348,11 +357,10 @@ def calibrate_linear_vel(base_action, c=None):
 def smooth_base_action(base_action):
     return np.stack(
         [
-            np.convolve(
-                base_action[:, i],
-                np.ones(5)/5, mode='same') for i in range(base_action.shape[1])
+            np.convolve(base_action[:, i], np.ones(5) / 5, mode="same")
+            for i in range(base_action.shape[1])
         ],
-        axis=-1
+        axis=-1,
     ).astype(np.float32)
 
 
@@ -372,3 +380,51 @@ def disable_gravity_compensation(bot: InterbotixManipulatorXS):
     gravity_compensation.disable()
 
 
+from scipy.spatial.transform import Rotation as R
+
+
+def transMatrix_to_euler_vecter(transMatrix: np.ndarray) -> np.ndarray:
+    """
+    Convert a 4x4 transformation matrix to a rotation vector and translation vector.
+    """
+    assert transMatrix.shape == (4, 4), "transMatrix must be a 4x4 matrix"
+    rot_max = transMatrix[:3, :3]
+    t = transMatrix[:3, 3]
+
+    # Convert the rotation matrix to a rotation vector
+    r = R.from_matrix(rot_max).as_rotvec()
+
+    # [x, y, z, rx, ry, rz]
+    return np.concatenate((t, r))
+
+
+def euler_vector_to_transMatrix(euler_vector: np.ndarray) -> np.ndarray:
+    """
+    Convert a rotation vector and translation vector to a 4x4 transformation matrix.
+    """
+    assert euler_vector.shape == (6,), "euler_vector must be a 6D vector"
+    t = euler_vector[:3]
+    r = euler_vector[3:]
+
+    # Convert the rotation vector to a rotation matrix
+    rot_max = R.from_rotvec(r).as_matrix()
+
+    # Create the transformation matrix
+    transMatrix = np.eye(4)
+    transMatrix[:3, :3] = rot_max
+    transMatrix[:3, 3] = t
+    return transMatrix
+
+
+def get_delta_transMatrix(
+    transMatrix1: np.ndarray, transMatrix2: np.ndarray
+) -> np.ndarray:
+    """
+    Get the delta transformation matrix between two 4x4 transformation matrices.
+    """
+    assert transMatrix1.shape == (4, 4), "transMatrix1 must be a 4x4 matrix"
+    assert transMatrix2.shape == (4, 4), "transMatrix2 must be a 4x4 matrix"
+    # Convert the rotation matrix to a rotation
+
+    inv_transMatrix = np.linalg.inv(transMatrix1)
+    return inv_transMatrix @ transMatrix2

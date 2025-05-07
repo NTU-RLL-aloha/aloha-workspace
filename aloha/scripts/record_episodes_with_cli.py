@@ -6,6 +6,9 @@ import time
 from typing import Dict
 import cv2
 import h5py
+from typing import List
+from rclpy.logging import LoggingSeverity
+import rclpy
 
 # import h5py_cache
 import IPython
@@ -54,17 +57,11 @@ from interbotix_common_modules.common_robot.robot import (
 e = IPython.embed
 
 TASK_CONFIGS = {
-    "aloha_test_move_water": {
-        "dataset_dir": DATA_DIR + "/aloha_test_move_water",
-        "episode_len": 600,
+    "test": {
+        "dataset_dir": DATA_DIR + "/test",
+        "episode_len": 500,
         "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "both",
-    },
-    "aloha_test": {
-        "dataset_dir": DATA_DIR + "/aloha_test",
-        "episode_len": 600,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "both",
+        "active_bot": "left",
     },
     "aloha_ise_bar": {
         "dataset_dir": DATA_DIR + "/aloha_ise_bar",
@@ -277,27 +274,36 @@ def capture_episodes(
     overwrite=False,
     num_episodes=3,
     use_gravity_compensation=False,
+    logging_level=LoggingSeverity.WARN,
 ):
     print(f'Saving Dataset to "{dataset_dir}"')
-
+    print("Creating node...")
     node = create_interbotix_global_node("aloha")
-
     # source of data
+    print("Creating leader arms...")
     leader_bot_left = InterbotixManipulatorXS(
         robot_model="wx250s",
         robot_name="leader_left",
         node=node,
         iterative_update_fk=False,
+        logging_level=logging_level,
     )
     leader_bot_right = InterbotixManipulatorXS(
         robot_model="wx250s",
         robot_name="leader_right",
         node=node,
         iterative_update_fk=False,
+        logging_level=logging_level,
     )
+    print("Creating Env...")
     env = make_real_env(
-        node, setup_robots=False, setup_base=False, arm_mask=ARM_MASKS[active_bot]
+        node,
+        setup_robots=False,
+        setup_base=False,
+        arm_mask=ARM_MASKS[active_bot],
+        logging_level=logging_level,
     )
+    print("Robot Startup...")
     robot_startup(node)
 
     # saving dataset
@@ -323,6 +329,7 @@ def capture_episodes(
         active_follower_bots.extend([env.follower_bot_left, env.follower_bot_right])
 
     # move all 4 robots to a starting pose where it is easy to start teleoperation, then wait till both gripper closed
+    print(f"Hi! The data will be saved to {dataset_dir}")
     opening_ceremony(
         active_leader_bots,
         active_follower_bots,
@@ -340,85 +347,83 @@ def capture_episodes(
             pprint(args)
             print(f"{e}")
 
-    start_position(
-        active_leader_bots,
-        active_follower_bots,
-        inactive_leader_bots,
-        inactive_follower_bots,
-    )
-    print("leader_bot_left ee pose: \n", leader_bot_left.arm.get_ee_pose())
-
-    wait_for_start(
-        active_leader_bots, use_gravity_compensation=use_gravity_compensation
-    )
     saving_worker = AsyncQueueProcessor(2, save_dataset_wrapper)
-    while counter < num_episodes:
-        dataset_name = dataset_name_template.format(episode_idx=base_count + counter)
-        dataset_path = os.path.join(dataset_dir, dataset_name)
-        if os.path.isfile(dataset_path) and not overwrite:
-            print(
-                f"Dataset already exist at \n{dataset_path}\nHint: set overwrite to True."
-            )
-            exit()
-
-        is_healthy, timesteps, actions, freq_mean = capture_one_episode(
-            dt,
-            max_timesteps,
-            camera_names,
-            env,
-            leader_bot_left,
-            leader_bot_right,
-            active_leader_bots,
-            active_follower_bots,
-            desc=f"[ {counter}/{num_episodes} ]",
-            use_gravity_compensation=use_gravity_compensation,
+    try:
+        wait_for_start(
+            active_leader_bots, use_gravity_compensation=use_gravity_compensation
         )
-        time.sleep(0.5)
-        start_position(
-            active_leader_bots,
-            active_follower_bots,
-            inactive_leader_bots,
-            inactive_follower_bots,
-        )
-
-        if not is_healthy:
-            print(
-                f"\n\nFreq_mean = {freq_mean}, lower than 30, re-collecting... \n\n\n\n"
+        while counter < num_episodes:
+            dataset_name = dataset_name_template.format(
+                episode_idx=base_count + counter
             )
-            continue
-        discard, to_exit = discard_or_save(active_leader_bots)
-
-        # breakpoint()
-        if discard:
-            print(f"Discard dataset.")
-        else:
-            try:
-                saving_worker.add_data(
-                    (
-                        camera_names,
-                        actions,
-                        timesteps,
-                        dataset_path,
-                        max_timesteps,
-                        True,  # compress
-                    )
+            dataset_path = os.path.join(dataset_dir, dataset_name)
+            if os.path.isfile(dataset_path) and not overwrite:
+                print(
+                    f"Dataset already exist at \n{dataset_path}\nHint: set overwrite to True."
                 )
-                counter += 1
-            except Exception as e:
-                print(f"Error saving dataset: {e}\n\nre-collecting... \n\n\n\n")
-        if to_exit:
-            print(f"Exiting...")
-            break
-    sleep(
-        # leader_bot_left,
-        # leader_bot_right,
-        # env.follower_bot_left,
-        # env.follower_bot_right,
-        active_leader_bots + active_follower_bots,
-        moving_time=2,
-    )
-    robot_shutdown()
-    saving_worker.join()
+                exit()
+
+            is_healthy, timesteps, actions, freq_mean = capture_one_episode(
+                dt,
+                max_timesteps,
+                camera_names,
+                env,
+                leader_bot_left,
+                leader_bot_right,
+                active_leader_bots,
+                active_follower_bots,
+                desc=f"[ {counter}/{num_episodes} ]",
+                use_gravity_compensation=use_gravity_compensation,
+            )
+            time.sleep(0.5)
+            start_position(
+                active_leader_bots,
+                active_follower_bots,
+                inactive_leader_bots,
+                inactive_follower_bots,
+            )
+
+            if not is_healthy:
+                print(
+                    f"\n\nFreq_mean = {freq_mean}, lower than 30, re-collecting... \n\n\n\n"
+                )
+                continue
+            discard, to_exit = discard_or_save(active_leader_bots)
+
+            # breakpoint()
+            if discard:
+                print(f"Discard dataset.")
+            else:
+                try:
+                    saving_worker.add_data(
+                        (
+                            camera_names,
+                            actions,
+                            timesteps,
+                            dataset_path,
+                            max_timesteps,
+                            True,  # use gzip
+                            # False,  # no compress
+                        )
+                    )
+                    counter += 1
+                except Exception as e:
+                    print(f"Error saving dataset: {e}\n\nre-collecting... \n\n\n\n")
+            if to_exit:
+                print(f"Exiting...")
+                break
+    finally:
+        print("\033[0K\rShutting down... Please wait.")
+        if not rclpy.ok():
+            print("rclpy is not ok, shutting down...")
+            robot_shutdown()
+            return
+        sleep(
+            active_leader_bots + active_follower_bots,
+            moving_time=2,
+        )
+        robot_shutdown()
+        saving_worker.join()
 
 
 def end_ceremony(
@@ -493,11 +498,11 @@ def capture_one_episode(
 
 def save_dataset(
     camera_names,
-    actions,
-    timesteps,
+    actions: List,
+    timesteps: List,
     dataset_path,
     max_timesteps,
-    compress=True,
+    compress=False,
     verbose=False,
 ):
     """
@@ -510,9 +515,12 @@ def save_dataset(
         - cam_right_wrist   (480, 640, 3) 'uint8'
     - qpos                  (14,)         'float64'
     - qvel                  (14,)         'float64'
+    - eepose                (14,)         'float64'
 
-    action                  (14,)         'float64'
-    base_action             (2,)          'float64'
+    actions
+    - joint_action          (14,)         'float64'
+    - delta_eepose          (14,)         'float64'
+    - base_action             (2,)          'float64'
     """
 
     # breakpoint()
@@ -520,8 +528,9 @@ def save_dataset(
         "/observations/qpos": [],
         "/observations/qvel": [],
         "/observations/effort": [],
-        "/action": [],
-        "/base_action": [],
+        "/actions/joint_action": [],
+        "/actions/delta_eepose": [],
+        "/actions/base_action": [],
         # '/base_action_t265': [],
     }
     for cam_name in camera_names:
@@ -529,71 +538,91 @@ def save_dataset(
         # data_dict[f"/observations/images/{cam_name}/depth"] = []
 
     # len(action): max_timesteps, len(time_steps): max_timesteps + 1
+    if len(actions) + 1 != len(timesteps):
+        print(
+            f"Warning: len(actions) + 1 != len(timesteps), {len(actions)} + 1 != {len(timesteps)}"
+        )
     while actions:
         action = actions.pop(0)
         ts = timesteps.pop(0)
         data_dict["/observations/qpos"].append(ts.observation["qpos"])
         data_dict["/observations/qvel"].append(ts.observation["qvel"])
         data_dict["/observations/effort"].append(ts.observation["effort"])
-        data_dict["/action"].append(action)
-        data_dict["/base_action"].append(ts.observation["base_vel"])
+        data_dict["/actions/joint_action"].append(action)
+        data_dict["/actions/delta_eepose"].append(
+            timesteps[0].observation[
+                "delta_eepose"
+            ]  # shift one timestep to make it align with action
+        )
+        data_dict["/actions/base_action"].append(ts.observation["base_vel"])
         # data_dict['/base_action_t265'].append(ts.observation['base_vel_t265'])
         for cam_name in camera_names:
             data_dict[f"/observations/images/{cam_name}"].append(
                 ts.observation["images"][cam_name]["color"]
             )
-    if compress:
-        # JPEG compression
-        t0 = time.time()
-        encode_param = [
-            int(cv2.IMWRITE_JPEG_QUALITY),
-            50,
-        ]  # tried as low as 20, seems fine
-        compressed_len = []
-        for cam_name in camera_names:
-            image_list = data_dict[f"/observations/images/{cam_name}"]
-            compressed_list = []
-            compressed_len.append([])
-            for image in image_list:
-                result, encoded_image = cv2.imencode(
-                    ".jpg", image, encode_param
-                )  # 0.02 sec # cv2.imdecode(encoded_image, 1)
-                compressed_list.append(encoded_image)
-                compressed_len[-1].append(len(encoded_image))
-            data_dict[f"/observations/images/{cam_name}"] = compressed_list
-        if verbose:
-            print(f"compression: {time.time() - t0:.2f}s")
 
-        # pad so it has same length
-        t0 = time.time()
-        compressed_len = np.array(compressed_len)
-        padded_size = compressed_len.max()
-        for cam_name in camera_names:
-            compressed_image_list = data_dict[f"/observations/images/{cam_name}"]
-            padded_compressed_image_list = []
-            for compressed_image in compressed_image_list:
-                padded_compressed_image = np.zeros(padded_size, dtype="uint8")
-                image_len = len(compressed_image)
-                padded_compressed_image[:image_len] = compressed_image
-                padded_compressed_image_list.append(padded_compressed_image)
-            data_dict[f"/observations/images/{cam_name}"] = padded_compressed_image_list
-        if verbose:
-            print(f"padding: {time.time() - t0:.2f}s")
+    for key in data_dict.keys():
+        if key.startswith("/actions/"):
+            data_dict[key] = data_dict[key][:-1]  # remove last element
+
+    # if compress:
+    #     # JPEG compression
+    #     t0 = time.time()
+    #     encode_param = [
+    #         int(cv2.IMWRITE_JPEG_QUALITY),
+    #         50,
+    #     ]  # tried as low as 20, seems fine
+    #     compressed_len = []
+    #     for cam_name in camera_names:
+    #         image_list = data_dict[f"/observations/images/{cam_name}"]
+    #         compressed_list = []
+    #         compressed_len.append([])
+    #         for image in image_list:
+    #             result, encoded_image = cv2.imencode(
+    #                 ".jpg", image, encode_param
+    #             )  # 0.02 sec # cv2.imdecode(encoded_image, 1)
+    #             compressed_list.append(encoded_image)
+    #             compressed_len[-1].append(len(encoded_image))
+    #         data_dict[f"/observations/images/{cam_name}"] = compressed_list
+    #     if verbose:
+    #         print(f"compression: {time.time() - t0:.2f}s")
+
+    #     # pad so it has same length
+    #     t0 = time.time()
+    #     compressed_len = np.array(compressed_len)
+    #     padded_size = compressed_len.max()
+    #     for cam_name in camera_names:
+    #         compressed_image_list = data_dict[f"/observations/images/{cam_name}"]
+    #         padded_compressed_image_list = []
+    #         for compressed_image in compressed_image_list:
+    #             padded_compressed_image = np.zeros(padded_size, dtype="uint8")
+    #             image_len = len(compressed_image)
+    #             padded_compressed_image[:image_len] = compressed_image
+    #             padded_compressed_image_list.append(padded_compressed_image)
+    #         data_dict[f"/observations/images/{cam_name}"] = padded_compressed_image_list
+    #     if verbose:
+    #         print(f"padding: {time.time() - t0:.2f}s")
 
     # HDF5
     t0 = time.time()
     with h5py.File(dataset_path + ".temp.hdf5", "w", rdcc_nbytes=1024**2 * 2) as root:
         root.attrs["sim"] = False
         root.attrs["compress"] = compress
+        root.attrs["compress_method"] = "gzip:5:shuffle"
         obs = root.create_group("observations")
+        acts = root.create_group("actions")
         image = obs.create_group("images")
         for cam_name in camera_names:
             if compress:
                 _ = image.create_dataset(
                     cam_name,
-                    (max_timesteps, padded_size),
+                    (max_timesteps, 480, 640, 3),
                     dtype="uint8",
-                    chunks=(1, padded_size),
+                    compression=5,
+                    shuffle=True,
+                    # # this is will take a big time/memory overhead, but should be faster when
+                    # # reading the data in this pattern
+                    # chunks=(8, H, W, 3),
                 )
             else:
                 _ = image.create_dataset(
@@ -605,21 +634,33 @@ def save_dataset(
         _ = obs.create_dataset("qpos", (max_timesteps, 14))
         _ = obs.create_dataset("qvel", (max_timesteps, 14))
         _ = obs.create_dataset("effort", (max_timesteps, 14))
-        _ = root.create_dataset("action", (max_timesteps, 14))
-        _ = root.create_dataset("base_action", (max_timesteps, 2))
+        _ = acts.create_dataset("joint_action", (max_timesteps - 1, 14))
+        _ = acts.create_dataset("delta_eepose", (max_timesteps - 1, 14))
+        _ = acts.create_dataset("base_action", (max_timesteps - 1, 2))
 
         # breakpoint()
         for name, array in data_dict.items():
             root[name][...] = array
 
-        if compress:
-            _ = root.create_dataset("compress_len", (len(camera_names), max_timesteps))
-            root["/compress_len"][...] = compressed_len
+        # if compress:
+        #     _ = root.create_dataset("compress_len", (len(camera_names), max_timesteps))
+        #     root["/compress_len"][...] = compressed_len
 
     os.rename(dataset_path + ".temp.hdf5", dataset_path + ".hdf5")
     if verbose:
         print(f"Saving: {time.time() - t0:.1f} secs")
     return True
+
+
+LOGGING = dict(
+    debug=LoggingSeverity.DEBUG,
+    info=LoggingSeverity.INFO,
+    warn=LoggingSeverity.WARN,
+    error=LoggingSeverity.ERROR,
+    fatal=LoggingSeverity.FATAL,
+    unset=LoggingSeverity.UNSET,
+    default=LoggingSeverity.INFO,
+)
 
 
 def main(args: Dict):
@@ -629,6 +670,7 @@ def main(args: Dict):
     max_timesteps = task_config["episode_len"]
     camera_names = task_config["camera_names"]
     active_bot = task_config.get("active_bot", "both")
+    logging_level = LOGGING[args.get("log", "default")]
 
     inactive_bot_pos = task_config.get("inactive_bot_pos", None)
     if inactive_bot_pos is not None and len(inactive_bot_pos) == len(START_ARM_POSE):
@@ -653,38 +695,17 @@ def main(args: Dict):
         overwrite=overwrite,
         num_episodes=num_episodes,
         use_gravity_compensation=use_gravity_compensation,
+        logging_level=logging_level,
     )
 
 
 def sleep(
     bots,
-    # leader_bot_left,
-    # leader_bot_right,
-    # follower_bot_left,
-    # follower_bot_right,
     moving_time=1,
 ):
     for bot in bots:
         torque_on(bot)
-    sleep_arms(bots, home_first=True)
-
-    time.sleep(moving_time)
-    # follower_sleep_position = (0, -1.7, 1.55, 0, 0.65, 0)
-    # leader_sleep_left_position = (-0.61, 0.0, 0.43, 0.0, 1.04, -0.65)
-    # leader_sleep_right_position = (0.61, 0.0, 0.43, 0.0, 1.04, 0.65)
-    # all_positions = [follower_sleep_position] * 2 + [
-    #     leader_sleep_left_position,
-    #     leader_sleep_right_position,
-    # ]
-    # move_arms(all_bots, all_positions, moving_time=moving_time)
-
-    # leader_sleep_left_position_2 = (0.0, 0.66, -0.27, -0.0, 1.1, 0)
-    # leader_sleep_right_position_2 = (0.0, 0.66, -0.27, -0.0, 1.1, 0)
-    # move_arms(
-    #     leader_bots,
-    #     [leader_sleep_left_position_2, leader_sleep_right_position_2],
-    #     moving_time=moving_time,
-    # )
+    sleep_arms(bots, moving_time=moving_time, home_first=True)
 
 
 def get_auto_index(dataset_dir, dataset_name_prefix="", data_suffix="hdf5"):
@@ -751,6 +772,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Activate gravity compensation",
         default=False,
+        required=False,
+    )
+    parser.add_argument(
+        "--log",
+        help="Logging level",
+        default="info",
+        choices=LOGGING.keys(),
         required=False,
     )
     main(vars(parser.parse_args()))

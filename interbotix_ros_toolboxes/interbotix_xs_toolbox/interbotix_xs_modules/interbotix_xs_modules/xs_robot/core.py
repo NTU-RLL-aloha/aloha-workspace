@@ -40,7 +40,7 @@ from typing import (
 from interbotix_xs_msgs.msg import (
     JointGroupCommand,
     JointSingleCommand,
-    JointTrajectoryCommand
+    JointTrajectoryCommand,
 )
 from interbotix_xs_msgs.srv import (
     MotorGains,
@@ -72,9 +72,9 @@ class InterbotixRobotXSCore:
         self,
         robot_model: str,
         robot_name: Optional[str] = None,
-        topic_joint_states: str = 'joint_states',
+        topic_joint_states: str = "joint_states",
         logging_level: LoggingSeverity = LoggingSeverity.INFO,
-        node_name: str = 'interbotix_robot_manipulation',
+        node_name: str = "interbotix_robot_manipulation",
         node: Optional[InterbotixRobotNode] = None,
         args=None,
     ) -> None:
@@ -102,21 +102,20 @@ class InterbotixRobotXSCore:
             self.robot_name = robot_model
 
         # Set ns to empty string if unspecified to prevent invalid namespace errors
-        if self.robot_name == '':
-            self.ns = ''
+        if self.robot_name == "":
+            self.ns = ""
         else:
-            self.ns = f'/{self.robot_name}'
+            self.ns = f"/{self.robot_name}"
 
         if node is None:
             self.robot_node = create_interbotix_global_node()
         else:
             self.robot_node = node
-
         set_logger_level(self.node_name, logging_level)
 
-        self.robot_node.get_logger().debug((
-            f"Created node with name='{self.node_name}' in namespace='{robot_name}'"
-        ))
+        self.robot_node.get_logger().debug(
+            (f"Created node with name='{self.node_name}' in namespace='{robot_name}'")
+        )
 
         self.topic_joint_states = topic_joint_states
         self.joint_states: JointState = None
@@ -126,45 +125,47 @@ class InterbotixRobotXSCore:
 
         self.srv_set_op_modes = self.robot_node.create_client(
             srv_type=OperatingModes,
-            srv_name=f'{self.ns}/set_operating_modes',
+            srv_name=f"{self.ns}/set_operating_modes",
             callback_group=cb_group_dxl_core,
         )
         self.srv_set_pids = self.robot_node.create_client(
             srv_type=MotorGains,
-            srv_name=f'{self.ns}/set_motor_pid_gains',
+            srv_name=f"{self.ns}/set_motor_pid_gains",
             callback_group=cb_group_dxl_core,
         )
         self.srv_set_reg = self.robot_node.create_client(
             srv_type=RegisterValues,
-            srv_name=f'{self.ns}/set_motor_registers',
+            srv_name=f"{self.ns}/set_motor_registers",
             callback_group=cb_group_dxl_core,
         )
         self.srv_get_reg = self.robot_node.create_client(
             srv_type=RegisterValues,
-            srv_name=f'{self.ns}/get_motor_registers',
+            srv_name=f"{self.ns}/get_motor_registers",
             callback_group=cb_group_dxl_core,
         )
         self.srv_get_info = self.robot_node.create_client(
             srv_type=RobotInfo,
-            srv_name=f'{self.ns}/get_robot_info',
+            srv_name=f"{self.ns}/get_robot_info",
             callback_group=cb_group_dxl_core,
         )
         self.srv_torque = self.robot_node.create_client(
             srv_type=TorqueEnable,
-            srv_name=f'{self.ns}/torque_enable',
+            srv_name=f"{self.ns}/torque_enable",
             callback_group=cb_group_dxl_core,
         )
         self.srv_reboot = self.robot_node.create_client(
             srv_type=Reboot,
-            srv_name=f'{self.ns}/reboot_motors',
+            srv_name=f"{self.ns}/reboot_motors",
             callback_group=cb_group_dxl_core,
         )
 
         # Check for xs_sdk by looking for set_operating_modes
-        while not self.srv_set_op_modes.wait_for_service(timeout_sec=5.0) and rclpy.ok():
+        while (
+            not self.srv_set_op_modes.wait_for_service(timeout_sec=5.0) and rclpy.ok()
+        ):
             self.robot_node.get_logger().error(
                 f"Failed to find services under namespace '{self.ns}'. Is the xs_sdk "
-                'running under that namespace?'
+                "running under that namespace?"
             )
         self.srv_set_pids.wait_for_service()
         self.srv_set_reg.wait_for_service()
@@ -174,25 +175,25 @@ class InterbotixRobotXSCore:
         self.srv_reboot.wait_for_service()
         self.pub_group = self.robot_node.create_publisher(
             msg_type=JointGroupCommand,
-            topic=f'{self.ns}/commands/joint_group',
+            topic=f"{self.ns}/commands/joint_group",
             qos_profile=10,
-            callback_group=cb_group_dxl_core
+            callback_group=cb_group_dxl_core,
         )
         self.pub_single = self.robot_node.create_publisher(
             msg_type=JointSingleCommand,
-            topic=f'{self.ns}/commands/joint_single',
+            topic=f"{self.ns}/commands/joint_single",
             qos_profile=10,
-            callback_group=cb_group_dxl_core
+            callback_group=cb_group_dxl_core,
         )
         self.pub_traj = self.robot_node.create_publisher(
             msg_type=JointTrajectoryCommand,
-            topic=f'{self.ns}/commands/joint_trajectory',
+            topic=f"{self.ns}/commands/joint_trajectory",
             qos_profile=10,
-            callback_group=cb_group_dxl_core
+            callback_group=cb_group_dxl_core,
         )
         self.sub_joint_states = self.robot_node.create_subscription(
             msg_type=JointState,
-            topic=f'{self.ns}/{self.topic_joint_states}',
+            topic=f"{self.ns}/{self.topic_joint_states}",
             callback=self._joint_state_cb,
             qos_profile=10,
             callback_group=cb_group_dxl_core,
@@ -202,17 +203,17 @@ class InterbotixRobotXSCore:
         )
         while self.joint_states is None and rclpy.ok():
             rclpy.spin_once(self.robot_node)
-        self.robot_node.get_logger().debug('Found joint states. Continuing...')
+        self.robot_node.get_logger().debug("Found joint states. Continuing...")
 
         self.js_index_map = dict(
             zip(self.joint_states.name, range(len(self.joint_states.name)))
         )
         self.robot_node.get_logger().info(
-            '\n'
-            f'\tRobot Name: {self.robot_name}\n'
-            f'\tRobot Model: {self.robot_model}'
+            "\n"
+            f"\tRobot Name: {self.robot_name}\n"
+            f"\tRobot Model: {self.robot_model}"
         )
-        self.robot_node.get_logger().info('Initialized InterbotixRobotXSCore!')
+        self.robot_node.get_logger().info("Initialized InterbotixRobotXSCore!")
 
     def get_node(self) -> InterbotixRobotNode:
         return self.robot_node
@@ -222,7 +223,7 @@ class InterbotixRobotXSCore:
         cmd_type: str,
         name: str,
         mode: str,
-        profile_type: str = 'velocity',
+        profile_type: str = "velocity",
         profile_velocity: int = 0,
         profile_acceleration: int = 0,
     ) -> None:
@@ -309,7 +310,9 @@ class InterbotixRobotXSCore:
         )
         self.get_node().wait_until_future_complete(future)
 
-    def robot_get_motor_registers(self, cmd_type: str, name: str, reg: str) -> List[int]:
+    def robot_get_motor_registers(
+        self, cmd_type: str, name: str, reg: str
+    ) -> List[int]:
         """
         Get the desired register value from either a single motor or a group of motors.
 
@@ -373,7 +376,9 @@ class InterbotixRobotXSCore:
             within the group regardless of if they are in an error state)
         """
         future = self.srv_reboot.call_async(
-            Reboot.Request(cmd_type=cmd_type, name=name, enable=enable, smart_reboot=smart_reboot)
+            Reboot.Request(
+                cmd_type=cmd_type, name=name, enable=enable, smart_reboot=smart_reboot
+            )
         )
         self.get_node().wait_until_future_complete(future)
 
@@ -402,7 +407,7 @@ class InterbotixRobotXSCore:
         cmd_type: str,
         name: str,
         traj_type: str,
-        raw_traj: List[Dict[float, List[float]]]
+        raw_traj: List[Dict[float, List[float]]],
     ) -> None:
         """
         Command a trajectory (position or velocity) to a single motor or a group of motors.
@@ -425,13 +430,15 @@ class InterbotixRobotXSCore:
         for point in raw_traj:
             for key, value in point.items():
                 traj_point = JointTrajectoryPoint()
-                if traj_type == 'position':
+                if traj_type == "position":
                     traj_point.positions = value
-                elif traj_type == 'velocity':
+                elif traj_type == "velocity":
                     traj_point.velocities = value
                 traj_point.time_from_start = Duration(seconds=key).to_msg()
                 traj.points.append(traj_point)
-        self.pub_traj.publish(JointTrajectoryCommand(cmd_type=cmd_type, name=name, traj=traj))
+        self.pub_traj.publish(
+            JointTrajectoryCommand(cmd_type=cmd_type, name=name, traj=traj)
+        )
 
     def robot_get_joint_states(self) -> JointState:
         """
@@ -457,9 +464,9 @@ class InterbotixRobotXSCore:
             joint_states = copy.deepcopy(self.joint_states)
         joint_index = joint_states.name.index(name)
         joint_info = {}
-        joint_info['position'] = joint_states.position[joint_index]
-        joint_info['velocity'] = joint_states.velocity[joint_index]
-        joint_info['effort'] = joint_states.effort[joint_index]
+        joint_info["position"] = joint_states.position[joint_index]
+        joint_info["velocity"] = joint_states.velocity[joint_index]
+        joint_info["effort"] = joint_states.effort[joint_index]
         return joint_info
 
     def _joint_state_cb(self, msg: JointState):

@@ -2,3 +2,6 @@ robomimic
 log
 *env
 *install
+
+**/*.hdf5
+**/*.mp4
