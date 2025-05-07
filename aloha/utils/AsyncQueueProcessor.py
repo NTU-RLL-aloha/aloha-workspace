@@ -17,16 +17,16 @@ class AsyncQueueProcessor:
         # Start worker threads
         self.futures = [self.executor.submit(self.worker) for _ in range(num_workers)]
 
-    def add_data(self, data):
+    def add_data(self, *args, **kwargs):
         """Put data into the queue to be processed."""
-        self.data_queue.put(data)
+        self.data_queue.put((args, kwargs))
 
     def worker(self):
         """Worker function that processes items in the queue."""
         while self.running.is_set() or not self.data_queue.empty():
             try:
                 data = self.data_queue.get(timeout=1)  # Timeout to check running state
-                result = self.callback(data)
+                result = self.callback(*data[0], **data[1])
                 self.results.append(result)
                 self.data_queue.task_done()
             except Empty:

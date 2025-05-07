@@ -6,9 +6,12 @@ import time
 from typing import Dict
 import cv2
 import h5py
+import yaml
 from typing import List
-from rclpy.logging import LoggingSeverity
 import rclpy
+from rclpy.logging import LoggingSeverity
+from rclpy.signals import SignalHandlerOptions
+import traceback
 
 # import h5py_cache
 import IPython
@@ -19,12 +22,15 @@ from aloha.constants import (
     FOLLOWER_GRIPPER_JOINT_OPEN,
     FPS,
     IS_MOBILE,
+    ARM_MASKS,
     LEADER_GRIPPER_CLOSE_THRESH,
     LEADER_GRIPPER_JOINT_MID,
     LEADER_GRIPPER_JOINT_OPEN,
     START_ARM_POSE,
-    SLEEP_ARM_POSE,
+    INACTIVE_START_ARM_POSE,
+    CONFIG_DIR,
     DATA_DIR,
+    CAMERA_RESOLUTIONS,
 )
 from interbotix_xs_modules.xs_robot.arm import InterbotixManipulatorXS
 from aloha.real_env import RealEnv, get_action, make_real_env
@@ -42,6 +48,7 @@ from aloha.robot_utils import (
 
 import os
 import sys
+import signal
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -54,60 +61,22 @@ from interbotix_common_modules.common_robot.robot import (
     robot_startup,
 )
 
-e = IPython.embed
-
-TASK_CONFIGS = {
-    "test": {
-        "dataset_dir": DATA_DIR + "/test",
-        "episode_len": 500,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "aloha_ise_bar": {
-        "dataset_dir": DATA_DIR + "/aloha_ise_bar",
-        "episode_len": 800,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "aloha_ise_door": {
-        "dataset_dir": DATA_DIR + "/aloha_ise_door",
-        "episode_len": 800,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "fd_button_press_topdown_narrow": {
-        "dataset_dir": DATA_DIR + "/flow_decomp/button_press_topdown_narrow",
-        "episode_len": 500,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "fd_button_press_topdown": {
-        "dataset_dir": DATA_DIR + "/flow_decomp/button_press_topdown",
-        "episode_len": 500,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "fd_assembly": {
-        "dataset_dir": DATA_DIR + "/flow_decomp/assembly",
-        "episode_len": 600,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-    "fd_pick_and_place": {
-        "dataset_dir": DATA_DIR + "/flow_decomp/pick_and_place",
-        "episode_len": 600,
-        "camera_names": ["cam_high", "cam_left_wrist", "cam_right_wrist"],
-        "active_bot": "left",
-    },
-}
+# e = IPython.embed
 
 
-INACTIVE_START_ARM_POSE = SLEEP_ARM_POSE
-ARM_MASKS = {
-    "left": [True, False],
-    "right": [False, True],
-    "both": [True, True],
-}
+DEBUG = False
+
+shutdown_requested = False
+
+
+def shutdown_handler(signum, frame):
+    global shutdown_requested
+    if not shutdown_requested:
+        shutdown_requested = True
+        print("Shutdown signal received. Exiting...")
+
+
+signal.signal(signal.SIGINT, shutdown_handler)
 
 
 def is_gripper_closed(leader_bots, threshold=LEADER_GRIPPER_CLOSE_THRESH):
@@ -124,8 +93,11 @@ def wait_for_start(leader_bots, use_gravity_compensation=False, verbose=True):
         print(f"Close the gripper to start")
 
     close_thresh = LEADER_GRIPPER_CLOSE_THRESH
-    while not is_gripper_closed(leader_bots, threshold=close_thresh):
+    while not is_gripper_closed(leader_bots, threshold=close_thresh) and not shutdown_requested:
         time.sleep(DT / 10)
+    if shutdown_requested:
+        return
+
     for leader_bot in leader_bots:
         if use_gravity_compensation:
             enable_gravity_compensation(leader_bot)
@@ -136,6 +108,9 @@ def wait_for_start(leader_bots, use_gravity_compensation=False, verbose=True):
 
 
 def discard_or_save(leader_bots):
+    def closed():
+        return is_gripper_closed(leader_bots, threshold=LEADER_GRIPPER_CLOSE_THRESH)
+
     for leader_bot in leader_bots:
         leader_bot.core.robot_torque_enable("single", "gripper", False)
 
@@ -143,14 +118,17 @@ def discard_or_save(leader_bots):
     discard = False
     to_exit = False
 
+    if DEBUG:
+        print("Debug mode, skipping discard_or_save")
+        while not closed() and not shutdown_requested:
+            time.sleep(DT / 10)
+        return False, False
+
     input_thread = InputThread("Discard/Stop/Exit? (h): ")
     input_thread.start()
 
-    def closed():
-        return is_gripper_closed(leader_bots, threshold=LEADER_GRIPPER_CLOSE_THRESH)
-
     try:
-        while not closed():
+        while not closed() and not shutdown_requested:
             input_text = input_thread.get_result()
 
             if input_text is None:
@@ -181,6 +159,10 @@ def discard_or_save(leader_bots):
             else:
                 print("Invalid input.")
             input_thread.clear_result()
+        
+        if shutdown_requested:
+            discard = True
+
     finally:
         input_thread.clear_result()
         input_thread.stop()
@@ -273,9 +255,13 @@ def capture_episodes(
     base_count=0,
     overwrite=False,
     num_episodes=3,
+    compress=False,
+    save_verbose=False,
     use_gravity_compensation=False,
     logging_level=LoggingSeverity.WARN,
 ):
+    rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
+
     print(f'Saving Dataset to "{dataset_dir}"')
     print("Creating node...")
     node = create_interbotix_global_node("aloha")
@@ -339,20 +325,22 @@ def capture_episodes(
     # env = make_real_env(init_node=False, setup_robots=False)
     counter = 0
 
-    def save_dataset_wrapper(args):
+    def save_dataset_wrapper(*args, **kwargs):
         try:
-            save_dataset(*args)
+            save_dataset(*args, **kwargs)
         except Exception as e:
             print(f"Error saving dataset with args: ")
             pprint(args)
-            print(f"{e}")
+            pprint(kwargs)
+            print(f"Error: {e}")
+            traceback.print_exc()
 
     saving_worker = AsyncQueueProcessor(2, save_dataset_wrapper)
     try:
         wait_for_start(
             active_leader_bots, use_gravity_compensation=use_gravity_compensation
         )
-        while counter < num_episodes:
+        while counter < num_episodes and not shutdown_requested:
             dataset_name = dataset_name_template.format(
                 episode_idx=base_count + counter
             )
@@ -396,19 +384,18 @@ def capture_episodes(
             else:
                 try:
                     saving_worker.add_data(
-                        (
-                            camera_names,
-                            actions,
-                            timesteps,
-                            dataset_path,
-                            max_timesteps,
-                            True,  # use gzip
-                            # False,  # no compress
-                        )
+                        camera_names,
+                        actions,
+                        timesteps,
+                        dataset_path,
+                        max_timesteps,
+                        compress=compress,
+                        verbose=save_verbose,
                     )
                     counter += 1
                 except Exception as e:
                     print(f"Error saving dataset: {e}\n\nre-collecting... \n\n\n\n")
+            
             if to_exit:
                 print(f"Exiting...")
                 break
@@ -509,10 +496,10 @@ def save_dataset(
     For each timestep:
     observations
     - images
-        - cam_high          (480, 640, 3) 'uint8'
-        - cam_low           (480, 640, 3) 'uint8'
-        - cam_left_wrist    (480, 640, 3) 'uint8'
-        - cam_right_wrist   (480, 640, 3) 'uint8'
+        - cam_high          (480, 848, 3) 'uint8'
+        - cam_low           (480, 848, 3) 'uint8'
+        - cam_left_wrist    (480, 848, 3) 'uint8'
+        - cam_right_wrist   (480, 848, 3) 'uint8'
     - qpos                  (14,)         'float64'
     - qvel                  (14,)         'float64'
     - eepose                (14,)         'float64'
@@ -523,7 +510,6 @@ def save_dataset(
     - base_action             (2,)          'float64'
     """
 
-    # breakpoint()
     data_dict = {
         "/observations/qpos": [],
         "/observations/qvel": [],
@@ -605,7 +591,11 @@ def save_dataset(
 
     # HDF5
     t0 = time.time()
-    with h5py.File(dataset_path + ".temp.hdf5", "w", rdcc_nbytes=1024**2 * 2) as root:
+    max_chunks = max(map(
+        lambda resolution: (resolution[0] * resolution[1] * 3 + 1024) // 1024,
+        CAMERA_RESOLUTIONS.values(),
+    ))
+    with h5py.File(dataset_path + ".temp.hdf5", "w", rdcc_nbytes=max_chunks * 2) as root:
         root.attrs["sim"] = False
         root.attrs["compress"] = compress
         root.attrs["compress_method"] = "gzip:5:shuffle"
@@ -613,10 +603,11 @@ def save_dataset(
         acts = root.create_group("actions")
         image = obs.create_group("images")
         for cam_name in camera_names:
+            resolution = CAMERA_RESOLUTIONS[cam_name]
             if compress:
                 _ = image.create_dataset(
                     cam_name,
-                    (max_timesteps, 480, 640, 3),
+                    (max_timesteps, *resolution, 3),
                     dtype="uint8",
                     compression=5,
                     shuffle=True,
@@ -627,9 +618,9 @@ def save_dataset(
             else:
                 _ = image.create_dataset(
                     cam_name,
-                    (max_timesteps, 480, 640, 3),
+                    (max_timesteps, *resolution, 3),
                     dtype="uint8",
-                    chunks=(1, 480, 640, 3),
+                    chunks=(1, *resolution, 3),
                 )
         _ = obs.create_dataset("qpos", (max_timesteps, 14))
         _ = obs.create_dataset("qvel", (max_timesteps, 14))
@@ -640,6 +631,8 @@ def save_dataset(
 
         # breakpoint()
         for name, array in data_dict.items():
+            if any([val is None for val in array]):
+                print(f"Warning: {name} has None values, skipping...")
             root[name][...] = array
 
         # if compress:
@@ -664,9 +657,16 @@ LOGGING = dict(
 
 
 def main(args: Dict):
-    task_config = TASK_CONFIGS[args["task_name"]]
+    task_configs = yaml.safe_load(open(os.path.join(CONFIG_DIR, "tasks.yaml"), "r"))
+    task_config = task_configs[args["task_name"]]
+
+    global DEBUG
+    DEBUG = args["debug"]
+
+    compress = args["compress"]
+    save_verbose = args["save_verbose"]
     use_gravity_compensation = args["use_gravity_compensation"]
-    dataset_dir = task_config["dataset_dir"]
+    dataset_dir = os.path.join(DATA_DIR, task_config["dataset_dir"])
     max_timesteps = task_config["episode_len"]
     camera_names = task_config["camera_names"]
     active_bot = task_config.get("active_bot", "both")
@@ -694,6 +694,8 @@ def main(args: Dict):
         base_count=episode_idx,
         overwrite=overwrite,
         num_episodes=num_episodes,
+        compress=compress,
+        save_verbose=save_verbose,
         use_gravity_compensation=use_gravity_compensation,
         logging_level=logging_level,
     )
@@ -703,6 +705,7 @@ def sleep(
     bots,
     moving_time=1,
 ):
+    print(f"Sleeping...")
     for bot in bots:
         torque_on(bot)
     sleep_arms(bots, moving_time=moving_time, home_first=True)
@@ -768,6 +771,20 @@ if __name__ == "__main__":
         required=False,
     )
     parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Use compression for images.",
+        default=False,
+        required=False,
+    )
+    parser.add_argument(
+        "--save_verbose",
+        action="store_true",
+        help="Verbose saving.",
+        default=False,
+        required=False,
+    )
+    parser.add_argument(
         "--use_gravity_compensation",
         action="store_true",
         help="Activate gravity compensation",
@@ -779,6 +796,13 @@ if __name__ == "__main__":
         help="Logging level",
         default="info",
         choices=LOGGING.keys(),
+        required=False,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Debug mode",
+        default=False,
         required=False,
     )
     main(vars(parser.parse_args()))

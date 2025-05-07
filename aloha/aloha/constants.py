@@ -8,9 +8,16 @@ import os
 IS_MOBILE = os.environ.get("INTERBOTIX_ALOHA_IS_MOBILE", "true").lower() == "true"
 # IS_MOBILE = False
 
+ARM_MASKS = {
+    "left": [True, False],
+    "right": [False, True],
+    "both": [True, True],
+}
+
 COLOR_IMAGE_TOPIC_NAME = "{}/camera/color/image_rect_raw"  # for RealSense cameras
 DEPTH_TOPIC_NAME = "{}/camera/aligned_depth_to_color/image_raw"  # for RealSense cameras
 
+CONFIG_DIR = os.path.expanduser("../config")
 DATA_DIR = os.path.expanduser("~/aloha_data")
 
 ### ALOHA Fixed Constants
@@ -33,11 +40,20 @@ JOINT_NAMES = [
     "wrist_rotate",
 ]
 
+CAMERA_RESOLUTIONS = {
+    "cam_high": (480, 848),
+    "cam_low": (480, 848),
+    "cam_left_wrist": (480, 848),
+    "cam_right_wrist": (480, 848),
+}
+
 # fmt: off
 # START_ARM_POSE = [0.0,-0.96,1.16,0.0,-0.3,0.0,0.02239,-0.02239,0.0,-0.96,1.16,0.0,-0.3,0.0,0.02239,-0.02239] # original
 START_ARM_POSE = [0.0,-0.32,0.80,0.0,0.66,1.3,0.02239,-0.02239,0.0,-0.32,0.80,0.0,0.66,1.3,0.02239,-0.02239] # flow decomposor
 SLEEP_ARM_POSE = [0.0,-2.049999952316284,1.7000000476837158,0.0,-2.0,0.0,0.02239,-0.02239,0.0,-2.049999952316284,1.7000000476837158,0.0,-2.0,0.0,0.02239,-0.02239]
+# START_ARM_POSE = SLEEP_ARM_POSE
 # fmt: on
+INACTIVE_START_ARM_POSE = SLEEP_ARM_POSE
 
 LEADER_GRIPPER_CLOSE_THRESH = 0.0
 

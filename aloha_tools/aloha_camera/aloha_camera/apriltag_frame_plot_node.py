@@ -8,8 +8,9 @@ import rclpy
 from rclpy.node import Node
 from tf2_msgs.msg import TFMessage
 from geometry_msgs.msg import Transform
-from tf_transformations import quaternion_matrix
+from tf_transformations import quaternion_matrix, euler_from_quaternion
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 class FramePlotNode(Node):
@@ -101,6 +102,20 @@ class FramePlotNode(Node):
                 arrow_length_ratio=0.1
             )
         self.ax.text(*(origin + 0.05), label, size=10, zorder=1)
+
+        # # Draw Euler angles
+        # angles = euler_from_quaternion(q)          # returns (roll, pitch, yaw) in radians
+        # degs   = np.degrees(angles)                # convert to degrees
+        # euler_str = f"R:{degs[0]:.1f}° P:{degs[1]:.1f}° Y:{degs[2]:.1f}°"
+        # # position it slightly below the origin
+        # euler_pos = origin - np.array([0.0, 0.0, 0.1])
+        # self.ax.text(
+        #     *euler_pos,
+        #     euler_str,
+        #     size=8,
+        #     color='k',
+        #     zorder=1
+        # )
 
     def tf_callback(self, msg: TFMessage):
         # If there are any transforms, take the first one

@@ -1,0 +1,62 @@
+test:
+  dataset_dir: test
+  episode_len: 500
+  camera_names: 
+    - cam_high
+    - cam_left_wrist
+    - cam_right_wrist
+  active_bot: left
+
+aloha_ise_bar:
+  dataset_dir: aloha_ise_bar
+  episode_len: 800
+  camera_names: 
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
+
+aloha_ise_door:
+  dataset_dir: aloha_ise_door
+  episode_len: 800
+  camera_names: 
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
+
+fd_button_press_topdown_narrow:
+  dataset_dir: flow_decomp/button_press_topdown_narrow
+  episode_len: 500
+  camera_names: 
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
+
+fd_button_press_topdown:
+  dataset_dir: flow_decomp/button_press_topdown
+  episode_len: 500
+  camera_names: 
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
+
+fd_assembly:
+  dataset_dir: flow_decomp/assembly
+  episode_len: 600
+  camera_names:
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
+
+fd_pick_and_place:
+  dataset_dir: flow_decomp/pick_and_place
+  episode_len: 100
+  camera_names:
+  - cam_high
+  - cam_left_wrist
+  - cam_right_wrist
+  active_bot: left
