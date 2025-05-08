@@ -25,13 +25,12 @@ aloha_ise_door:
   - cam_right_wrist
   active_bot: left
 
-fd_button_press_topdown_narrow:
-  dataset_dir: flow_decomp/button_press_topdown_narrow
+fd_button_press_topdown_precise:
+  dataset_dir: flow_decomp/button_press_topdown_precise
   episode_len: 500
   camera_names: 
   - cam_high
   - cam_left_wrist
-  - cam_right_wrist
   active_bot: left
 
 fd_button_press_topdown:
@@ -40,23 +39,44 @@ fd_button_press_topdown:
   camera_names: 
   - cam_high
   - cam_left_wrist
-  - cam_right_wrist
   active_bot: left
 
 fd_assembly:
   dataset_dir: flow_decomp/assembly
-  episode_len: 600
+  episode_len: 500
   camera_names:
   - cam_high
   - cam_left_wrist
-  - cam_right_wrist
   active_bot: left
 
-fd_pick_and_place:
-  dataset_dir: flow_decomp/pick_and_place
-  episode_len: 100
+fd_pick_and_place_gray:
+  dataset_dir: flow_decomp/pick_and_place_gray
+  episode_len: 350
   camera_names:
   - cam_high
   - cam_left_wrist
-  - cam_right_wrist
+  active_bot: left
+  
+fd_pick_and_place_orange:
+  dataset_dir: flow_decomp/pick_and_place_orange
+  episode_len: 350
+  camera_names:
+  - cam_high
+  - cam_left_wrist
+  active_bot: left
+  
+fd_pick_and_place_pink:
+  dataset_dir: flow_decomp/pick_and_place_pink
+  episode_len: 350
+  camera_names:
+  - cam_high
+  - cam_left_wrist
+  active_bot: left
+
+fd_pick_and_place_black:
+  dataset_dir: flow_decomp/pick_and_place_black
+  episode_len: 350
+  camera_names:
+  - cam_high
+  - cam_left_wrist
   active_bot: left

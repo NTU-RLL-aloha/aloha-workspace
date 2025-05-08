@@ -93,8 +93,11 @@ def wait_for_start(leader_bots, use_gravity_compensation=False, verbose=True):
         print(f"Close the gripper to start")
 
     close_thresh = LEADER_GRIPPER_CLOSE_THRESH
-    while not is_gripper_closed(leader_bots, threshold=close_thresh) and not shutdown_requested:
-        time.sleep(DT / 10)
+    while (
+        not is_gripper_closed(leader_bots, threshold=close_thresh)
+        and not shutdown_requested
+    ):
+        time.sleep(DT)
     if shutdown_requested:
         return
 
@@ -121,7 +124,7 @@ def discard_or_save(leader_bots):
     if DEBUG:
         print("Debug mode, skipping discard_or_save")
         while not closed() and not shutdown_requested:
-            time.sleep(DT / 10)
+            time.sleep(DT)
         return False, False
 
     input_thread = InputThread("Discard/Stop/Exit? (h): ")
@@ -132,7 +135,7 @@ def discard_or_save(leader_bots):
             input_text = input_thread.get_result()
 
             if input_text is None:
-                time.sleep(DT / 10)
+                time.sleep(DT)
                 continue
 
             if input_text in ["y", "yes", "discard", "d"]:
@@ -140,7 +143,7 @@ def discard_or_save(leader_bots):
                 discard = True
                 print("Close the gripper to continue...        ")
                 while not closed():
-                    time.sleep(DT / 10)
+                    time.sleep(DT)
                 print("gripper close")
                 break
             elif input_text in ["q", "quit", "e", "exit"]:
@@ -159,7 +162,7 @@ def discard_or_save(leader_bots):
             else:
                 print("Invalid input.")
             input_thread.clear_result()
-        
+
         if shutdown_requested:
             discard = True
 
@@ -242,6 +245,25 @@ def opening_ceremony(
         active_follower_bots,
         inactive_leader_bots,
         inactive_follower_bots,
+    )
+
+
+def end_ceremony(
+    active_leader_bots,
+    active_follower_bots,
+    # inactive_leader_bots,
+    # inactive_follower_bots,
+):
+    for leader_bot, follower_bot in zip(active_leader_bots, active_follower_bots):
+        # Torque on leader bot
+        torque_on(leader_bot)
+        # Open follower gripper
+        follower_bot.core.robot_set_operating_modes("single", "gripper", "position")
+
+    move_grippers(
+        active_follower_bots,
+        [FOLLOWER_GRIPPER_JOINT_OPEN] * len(active_follower_bots),
+        moving_time=1.25,
     )
 
 
@@ -351,7 +373,7 @@ def capture_episodes(
                 )
                 exit()
 
-            is_healthy, timesteps, actions, freq_mean = capture_one_episode(
+            is_healthy, timesteps, actions, stats = capture_one_episode(
                 dt,
                 max_timesteps,
                 camera_names,
@@ -363,6 +385,7 @@ def capture_episodes(
                 desc=f"[ {counter}/{num_episodes} ]",
                 use_gravity_compensation=use_gravity_compensation,
             )
+            freq_mean, anomaly_frames_count = stats
             time.sleep(0.5)
             start_position(
                 active_leader_bots,
@@ -373,11 +396,13 @@ def capture_episodes(
 
             if not is_healthy:
                 print(
-                    f"\n\nFreq_mean = {freq_mean}, lower than 30, re-collecting... \n\n\n\n"
+                    f"\n\nFreq_mean = {freq_mean}\nAnomaly frames count = {anomaly_frames_count}\n"
+                    f"Dataset is unhealthy, re-collecting...\n\n"
                 )
-                continue
             discard, to_exit = discard_or_save(active_leader_bots)
 
+            if not is_healthy:
+                discard = True
             # breakpoint()
             if discard:
                 print(f"Discard dataset.")
@@ -395,7 +420,7 @@ def capture_episodes(
                     counter += 1
                 except Exception as e:
                     print(f"Error saving dataset: {e}\n\nre-collecting... \n\n\n\n")
-            
+
             if to_exit:
                 print(f"Exiting...")
                 break
@@ -411,25 +436,6 @@ def capture_episodes(
         )
         robot_shutdown()
         saving_worker.join()
-
-
-def end_ceremony(
-    active_leader_bots,
-    active_follower_bots,
-    # inactive_leader_bots,
-    # inactive_follower_bots,
-):
-    for leader_bot, follower_bot in zip(active_leader_bots, active_follower_bots):
-        # Torque on leader bot
-        torque_on(leader_bot)
-        # Open follower gripper
-        follower_bot.core.robot_set_operating_modes("single", "gripper", "position")
-
-    move_grippers(
-        active_follower_bots,
-        [FOLLOWER_GRIPPER_JOINT_OPEN] * len(active_follower_bots),
-        moving_time=1.25,
-    )
 
 
 def capture_one_episode(
@@ -449,25 +455,27 @@ def capture_one_episode(
     timesteps = [ts]
     actions = []
     actual_dt_history = []
-    time0 = time.time()
-    DT = 1 / FPS
 
     for leader_bot in active_leader_bots:
         if use_gravity_compensation:
             enable_gravity_compensation(leader_bot)
         else:
             torque_off(leader_bot)
-
+    action = None
+    time0 = timer = time.time()
     for t in tqdm(range(max_timesteps), desc=desc):
-        t0 = time.time()  #
-        action = get_action(leader_bot_left, leader_bot_right)
-        t1 = time.time()  #
+        while (action is None) or (time.time() - timer < dt):
+            time.sleep(dt * 0.01)
+            t0 = time.time()  #
+            action = get_action(leader_bot_left, leader_bot_right)
+            t1 = time.time()  #
         ts = env.step(action)
         t2 = time.time()  #
         timesteps.append(ts)
         actions.append(action)
         actual_dt_history.append([t0, t1, t2])
-        time.sleep(max(0, DT - (time.time() - t0)))
+        timer = timer + dt
+
     print(f"Avg fps: {max_timesteps / (time.time() - time0)}")
 
     end_ceremony(
@@ -477,10 +485,32 @@ def capture_one_episode(
     )
 
     freq_mean = print_dt_diagnosis(actual_dt_history)
-    if freq_mean < 30:
-        # not healthy
-        return False, None, None, freq_mean
-    return True, timesteps, actions, freq_mean
+    anomaly_frames_count = num_of_anomaly_frames(
+        np.array([ts.observation["images"]["cam_high"]["color"] for ts in timesteps]),
+        method="mse",
+        threshold=1,
+    )
+    unhealthy = freq_mean < 30 or anomaly_frames_count > 10
+    return not unhealthy, timesteps, actions, (freq_mean, anomaly_frames_count)
+
+
+def num_of_anomaly_frames(frames: np.ndarray, method="mse", threshold=1):
+    """
+    Calculate the number of frames that are different from the previous frame
+    frames: np.ndarray, shape (N, H, W, C)
+    method: "mse" or "abs"
+    threshold: threshold for the difference
+    """
+    diffs = []
+    diffs = frames[1:] - frames[:-1]
+    if method == "mse":
+        diffs = np.mean(diffs**2, axis=(1, 2, 3))
+    elif method == "abs":
+        diffs = np.mean(np.abs(diffs), axis=(1, 2, 3))
+    else:
+        raise ValueError("Unsupported method")
+
+    return len(np.where(diffs < threshold))
 
 
 def save_dataset(
@@ -550,55 +580,20 @@ def save_dataset(
     for key in data_dict.keys():
         if key.startswith("/actions/"):
             data_dict[key] = data_dict[key][:-1]  # remove last element
-
-    # if compress:
-    #     # JPEG compression
-    #     t0 = time.time()
-    #     encode_param = [
-    #         int(cv2.IMWRITE_JPEG_QUALITY),
-    #         50,
-    #     ]  # tried as low as 20, seems fine
-    #     compressed_len = []
-    #     for cam_name in camera_names:
-    #         image_list = data_dict[f"/observations/images/{cam_name}"]
-    #         compressed_list = []
-    #         compressed_len.append([])
-    #         for image in image_list:
-    #             result, encoded_image = cv2.imencode(
-    #                 ".jpg", image, encode_param
-    #             )  # 0.02 sec # cv2.imdecode(encoded_image, 1)
-    #             compressed_list.append(encoded_image)
-    #             compressed_len[-1].append(len(encoded_image))
-    #         data_dict[f"/observations/images/{cam_name}"] = compressed_list
-    #     if verbose:
-    #         print(f"compression: {time.time() - t0:.2f}s")
-
-    #     # pad so it has same length
-    #     t0 = time.time()
-    #     compressed_len = np.array(compressed_len)
-    #     padded_size = compressed_len.max()
-    #     for cam_name in camera_names:
-    #         compressed_image_list = data_dict[f"/observations/images/{cam_name}"]
-    #         padded_compressed_image_list = []
-    #         for compressed_image in compressed_image_list:
-    #             padded_compressed_image = np.zeros(padded_size, dtype="uint8")
-    #             image_len = len(compressed_image)
-    #             padded_compressed_image[:image_len] = compressed_image
-    #             padded_compressed_image_list.append(padded_compressed_image)
-    #         data_dict[f"/observations/images/{cam_name}"] = padded_compressed_image_list
-    #     if verbose:
-    #         print(f"padding: {time.time() - t0:.2f}s")
-
     # HDF5
     t0 = time.time()
-    max_chunks = max(map(
-        lambda resolution: (resolution[0] * resolution[1] * 3 + 1024) // 1024,
-        CAMERA_RESOLUTIONS.values(),
-    ))
-    with h5py.File(dataset_path + ".temp.hdf5", "w", rdcc_nbytes=max_chunks * 2) as root:
+    max_chunks = max(
+        map(
+            lambda resolution: (resolution[0] * resolution[1] * 3 + 1024) // 1024,
+            CAMERA_RESOLUTIONS.values(),
+        )
+    )
+    with h5py.File(
+        dataset_path + ".temp.hdf5", "w", rdcc_nbytes=max_chunks * 2
+    ) as root:
         root.attrs["sim"] = False
         root.attrs["compress"] = compress
-        root.attrs["compress_method"] = "gzip:5:shuffle"
+        root.attrs["compress_method"] = "gzip:1:shuffle"
         obs = root.create_group("observations")
         acts = root.create_group("actions")
         image = obs.create_group("images")
@@ -609,7 +604,7 @@ def save_dataset(
                     cam_name,
                     (max_timesteps, *resolution, 3),
                     dtype="uint8",
-                    compression=5,
+                    compression=1,
                     shuffle=True,
                     # # this is will take a big time/memory overhead, but should be faster when
                     # # reading the data in this pattern
@@ -664,6 +659,7 @@ def main(args: Dict):
     DEBUG = args["debug"]
 
     compress = args["compress"]
+    print(f"Compress: {compress}")
     save_verbose = args["save_verbose"]
     use_gravity_compensation = args["use_gravity_compensation"]
     dataset_dir = os.path.join(DATA_DIR, task_config["dataset_dir"])
@@ -733,7 +729,7 @@ def print_dt_diagnosis(actual_dt_history):
     dt_std = np.std(total_time)
     freq_mean = 1 / dt_mean
     print(
-        f"Avg freq: {freq_mean:.2f} Get action: {np.mean(get_action_time):.3f} Step env: {np.mean(step_env_time):.3f}"
+        f"Avg freq: {freq_mean:.2f} Get action: {np.mean(get_action_time):.3e} Step env: {np.mean(step_env_time):.3f}"
     )
     return freq_mean
 
@@ -774,7 +770,7 @@ if __name__ == "__main__":
         "--compress",
         action="store_true",
         help="Use compression for images.",
-        default=False,
+        default=True,
         required=False,
     )
     parser.add_argument(

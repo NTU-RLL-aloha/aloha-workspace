@@ -21,7 +21,8 @@ CONFIG_DIR = os.path.expanduser("../config")
 DATA_DIR = os.path.expanduser("~/aloha_data")
 
 ### ALOHA Fixed Constants
-DT = 0.02
+FPS = 30
+DT = 1 / FPS
 
 try:
     from rclpy.duration import Duration
@@ -30,7 +31,6 @@ try:
     DT_DURATION = Duration(seconds=0, nanoseconds=DT * S_TO_NS)
 except ImportError:
     pass
-FPS = 50
 JOINT_NAMES = [
     "waist",
     "shoulder",
