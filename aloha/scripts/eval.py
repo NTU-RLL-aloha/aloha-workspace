@@ -1,4 +1,3 @@
-from pdb import set_trace
 from pprint import pprint
 import argparse
 import os
@@ -14,7 +13,6 @@ from rclpy.signals import SignalHandlerOptions
 import traceback
 
 # import h5py_cache
-import IPython
 import numpy as np
 from aloha.constants import (
     DT,
@@ -59,11 +57,7 @@ from interbotix_common_modules.common_robot.robot import (
     robot_startup,
 )
 
-# e = IPython.embed
-
-
 DEBUG = False
-
 shutdown_requested = False
 
 
@@ -82,7 +76,7 @@ def is_gripper_closed(leader_bots, threshold=LEADER_GRIPPER_CLOSE_THRESH):
     return all([gripper_pose < threshold for gripper_pose in gripper_poses])
 
 
-def wait_for_start(leader_bots, use_gravity_compensation=False, verbose=True):
+def wait_for_start(leader_bots, verbose=True):
     # press gripper to start data collection
     # disable torque for only gripper joint of leader robot to allow user movement
     for leader_bot in leader_bots:
@@ -99,11 +93,11 @@ def wait_for_start(leader_bots, use_gravity_compensation=False, verbose=True):
     if shutdown_requested:
         return
 
-    for leader_bot in leader_bots:
-        if use_gravity_compensation:
-            enable_gravity_compensation(leader_bot)
-        else:
-            torque_off(leader_bot)
+    # for leader_bot in leader_bots:
+    #     if use_gravity_compensation:
+    #         enable_gravity_compensation(leader_bot)
+    #     else:
+    #         torque_off(leader_bot)
     if verbose:
         print(f"Started!")
 
@@ -613,9 +607,6 @@ def save_dataset(
                     dtype="uint8",
                     compression=1,
                     shuffle=True,
-                    # # this is will take a big time/memory overhead, but should be faster when
-                    # # reading the data in this pattern
-                    # chunks=(8, H, W, 3),
                 )
             else:
                 _ = image.create_dataset(
@@ -636,10 +627,6 @@ def save_dataset(
             if any([val is None for val in array]):
                 print(f"Warning: {name} has None values, skipping...")
             root[name][...] = array
-
-        # if compress:
-        #     _ = root.create_dataset("compress_len", (len(camera_names), max_timesteps))
-        #     root["/compress_len"][...] = compressed_len
 
     os.rename(dataset_path + ".temp.hdf5", dataset_path + ".hdf5")
     if verbose:
@@ -740,16 +727,6 @@ def print_dt_diagnosis(actual_dt_history):
         f"Avg freq: {freq_mean:.2f} Get action: {np.mean(get_action_time):.3e} Step env: {np.mean(step_env_time):.3f}"
     )
     return freq_mean
-
-
-def debug():
-    print(f"====== Debug mode ======")
-    recorder = Recorder("right", is_debug=True)
-    image_recorder = ImageRecorder(init_node=False, is_debug=True)
-    while True:
-        time.sleep(1)
-        recorder.print_diagnostics()
-        image_recorder.print_diagnostics()
 
 
 if __name__ == "__main__":

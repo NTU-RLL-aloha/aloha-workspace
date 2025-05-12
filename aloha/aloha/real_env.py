@@ -81,9 +81,11 @@ class RealEnv:
         node: InterbotixRobotNode,
         setup_robots: bool = True,
         setup_base: bool = False,
+        camera_names: List[str] = None,
         is_mobile: bool = IS_MOBILE,
         arm_mask: List[bool] = [True, True],
         logging_level=LoggingSeverity.INFO,
+        target_fps: int = 30,
     ):
         self.follower_bot_left = InterbotixManipulatorXS(
             robot_model="vx300s",
@@ -106,7 +108,13 @@ class RealEnv:
 
         self.recorder_left = Recorder("left", node=node)
         self.recorder_right = Recorder("right", node=node)
-        self.image_recorder = ImageRecorder(node=node, is_mobile=IS_MOBILE)
+        self.image_recorder = ImageRecorder(
+            node=node,
+            camera_names=camera_names,
+            is_mobile=IS_MOBILE,
+            is_monitor=False,
+            target_fps=target_fps,
+        )
         self.gripper_command = JointSingleCommand(name="gripper")
         self.previous_ee_pose = None
         if setup_robots:
@@ -170,6 +178,32 @@ class RealEnv:
                 [curr_ee_pose[13]],
             ]
         )
+
+    def ee_pose_step(self, delta_ee_pose, prev_ee_pose=None):
+        """
+        Step the environment using delta end effector pose.
+        """
+        if prev_ee_pose is None:
+            prev_ee_pose = self.get_ee_pose()
+
+        prev_left_eepose = prev_ee_pose[:6]
+        prev_right_eepose = prev_ee_pose[7:13]
+        prev_left_matrix = euler_vector_to_transMatrix(prev_left_eepose)
+        prev_right_matrix = euler_vector_to_transMatrix(prev_right_eepose)
+
+        # set_ee_pose_matrix
+        delta_left_eepose = delta_ee_pose[:6]
+        delta_right_eepose = delta_ee_pose[7:13]
+        delta_left_matrix = euler_vector_to_transMatrix(delta_left_eepose)
+        delta_right_matrix = euler_vector_to_transMatrix(delta_right_eepose)
+
+        # get new ee pose
+        new_left_matrix = prev_left_matrix @ delta_left_matrix
+        new_right_matrix = prev_right_matrix @ delta_right_matrix
+
+        left_gripper_qpos = delta_ee_pose[6]
+        right_gripper_qpos = delta_ee_pose[13]
+        return new_left_matrix, left_gripper_qpos, new_right_matrix, right_gripper_qpos
 
     def get_qpos(self):
         left_qpos_raw = self.recorder_left.qpos
@@ -286,21 +320,45 @@ class RealEnv:
             observation=obs,
         )
 
-    def step(self, action, base_action=None, get_base_vel=False, get_obs=True):
+    def step(
+        self,
+        action,
+        base_action=None,
+        get_base_vel=False,
+        get_obs=True,
+        use_delta_ee=False,
+    ):
         state_len = int(len(action) / 2)
         left_action = action[:state_len]
         right_action = action[state_len:]
 
-        if self.arm_mask[0]:
-            self.follower_bot_left.arm.set_joint_positions(
-                left_action[:6], blocking=False
-            )
-        if self.arm_mask[1]:
-            self.follower_bot_right.arm.set_joint_positions(
-                right_action[:6], blocking=False
-            )
+        left_gripper_qpos = left_action[-1]
+        right_gripper_qpos = right_action[-1]
 
-        self.set_gripper_pose(left_action[-1], right_action[-1])
+        if use_delta_ee:
+            left_action, left_gripper_qpos, right_action, right_gripper_qpos = (
+                self.ee_pose_step(left_action, self.previous_ee_pose)
+            )
+        if delta_ee_pose:
+            if self.arm_mask[0]:
+                self.follower_bot_left.arm.set_ee_pose_matrix(
+                    left_action, blocking=False
+                )
+            if self.arm_mask[1]:
+                self.follower_bot_right.arm.set_ee_pose_matrix(
+                    right_action, blocking=False
+                )
+        else:
+            if self.arm_mask[0]:
+                self.follower_bot_left.arm.set_joint_positions(
+                    left_action[:6], blocking=False
+                )
+            if self.arm_mask[1]:
+                self.follower_bot_right.arm.set_joint_positions(
+                    right_action[:6], blocking=False
+                )
+
+        self.set_gripper_pose(left_gripper_qpos, right_gripper_qpos)
         if base_action is not None:
             base_action_linear, base_action_angular = base_action
             self.base.base.command_velocity_xyaw(
@@ -344,13 +402,21 @@ def make_real_env(
     setup_base: bool = False,
     arm_mask: List[bool] = [True, True],
     logging_level=LoggingSeverity.INFO,
+    camera_names: List[str] = None,
+    target_fps: int = 30,
 ):
     if node is None:
         node = get_interbotix_global_node()
         if node is None:
             node = create_interbotix_global_node("aloha")
     env = RealEnv(
-        node, setup_robots, setup_base, arm_mask=arm_mask, logging_level=logging_level
+        node,
+        setup_robots,
+        setup_base,
+        camera_names=camera_names,
+        arm_mask=arm_mask,
+        logging_level=logging_level,
+        target_fps=target_fps,
     )
     return env
 

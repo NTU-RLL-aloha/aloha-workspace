@@ -21,7 +21,7 @@ CONFIG_DIR = os.path.expanduser("../config")
 DATA_DIR = os.path.expanduser("~/aloha_data")
 
 ### ALOHA Fixed Constants
-FPS = 30
+FPS = 50
 DT = 1 / FPS
 
 try:

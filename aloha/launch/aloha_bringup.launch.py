@@ -298,6 +298,7 @@ def launch_setup(context, *args, **kwargs):
                     ("/tf", "tf"),
                 ],
                 output="log",
+                condition=IfCondition(LaunchConfiguration("use_apriltag")),
             )
         )
 
@@ -644,10 +645,18 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-        "use_gravity_compensation",
+            "use_gravity_compensation",
             default_value="false",
             choices=("true", "false"),
             description="if `true`, launches the gravity compensation node",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "use_apriltag",
+            default_value="false",
+            choices=("true", "false"),
+            description="if `true`, launches the apriltag detection node",
         )
     )
     declared_arguments.extend(

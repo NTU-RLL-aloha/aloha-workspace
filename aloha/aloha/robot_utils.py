@@ -1,6 +1,6 @@
 from collections import deque
 import time
-from typing import Sequence
+from typing import Sequence, Dict
 
 from aloha.constants import (
     COLOR_IMAGE_TOPIC_NAME,
@@ -18,30 +18,63 @@ import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState, CameraInfo
 from realsense2_camera_msgs.msg import RGBD
+from .cam_health_detector import FrameHealthChecker
+
+
+def get_realsense_temp():
+    import pyrealsense2 as rs
+
+    ctx = rs.context()
+    if len(ctx.devices) == 0:
+        print("No RealSense device connected")
+        return None
+
+    temps = []
+    for i in range(len(ctx.devices)):
+        dev = ctx.devices[0]
+        sensors = dev.query_sensors()
+        for sensor in sensors:
+            try:
+                temp = sensor.get_option(rs.option.asic_temperature)
+                if temp > 55:
+                    print(
+                        f"\033[91m[Warning] Camera ASIC temperature high: {temp:.2f}°C\033[0m"
+                    )
+                temps.append(temp)
+            except:
+                continue
+    return temps
 
 
 class ImageRecorder:
     def __init__(
         self,
+        camera_names: Sequence[str] = None,
         is_mobile: bool = IS_MOBILE,
         is_debug: bool = False,
+        is_monitor: bool = True,
         node: Node = None,
+        target_fps: int = 30,
     ):
         self.is_debug = is_debug
+        self.is_monitor = is_monitor
         self.bridge = CvBridge()
 
-        if is_mobile:
-            self.camera_names = ["cam_high", "cam_left_wrist", "cam_right_wrist"]
+        if camera_names is not None:
+            self.camera_names = camera_names
         else:
-            self.camera_names = [
-                "cam_high",
-                "cam_low",
-                "cam_left_wrist",
-                "cam_right_wrist",
-            ]
+            if is_mobile:
+                self.camera_names = ["cam_high", "cam_left_wrist", "cam_right_wrist"]
+            else:
+                self.camera_names = [
+                    "cam_high",
+                    "cam_low",
+                    "cam_left_wrist",
+                    "cam_right_wrist",
+                ]
 
         # self.camera_names = ['cam_high']
-
+        self.frame_health_checkers: Dict[str, FrameHealthChecker] = {}
         for cam_name in self.camera_names:
             setattr(self, f"{cam_name}_color", None)
             setattr(self, f"{cam_name}_depth", None)
@@ -49,6 +82,9 @@ class ImageRecorder:
             setattr(self, f"{cam_name}_depth_camera_info", None)
             setattr(self, f"{cam_name}_secs", None)
             setattr(self, f"{cam_name}_nsecs", None)
+            self.frame_health_checkers[cam_name] = FrameHealthChecker(
+                mse_threshold=5.0, max_static_count=5, min_fps=target_fps
+            )
             if cam_name == "cam_high":
                 callback_func = self.image_cb_cam_high
             elif cam_name == "cam_low":
@@ -79,24 +115,20 @@ class ImageRecorder:
         time.sleep(0.5)
 
     def image_cb(self, cam_name: str, data: Image):
-        # print("image_cb")
         setattr(
             self,
             f"{cam_name}_color",
             self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough"),
         )
-        # setattr(
-        #     self,
-        #     f'{cam_name}_depth',
-        #     self.bridge.imgmsg_to_cv2(data.depth, desired_encoding='passthrough')
-        # )
-        # setattr(self, f'{cam_name}_depth_camera_info', data.depth_camera_info)
-        # setattr(self, f'{cam_name}_color_camera_info', data.rgb_camera_info)
         setattr(self, f"{cam_name}_secs", data.header.stamp.sec)
         setattr(self, f"{cam_name}_nsecs", data.header.stamp.nanosec)
         if self.is_debug:
             getattr(self, f"{cam_name}_timestamps").append(
-                data.header.stamp.sec + data.header.stamp.sec * 1e-9
+                data.header.stamp.sec + data.header.stamp.nanosec * 1e-9
+            )
+        if self.is_monitor:
+            self.frame_health_checkers[cam_name].check(
+                getattr(self, f"{cam_name}_color"), data.header.stamp, cam_name
             )
 
     def image_cb_cam_high(self, data):
@@ -156,6 +188,9 @@ class ImageRecorder:
         return image_dict
 
     def print_diagnostics(self):
+        if not self.is_debug:
+            return
+
         def dt_helper(ts):
             ts = np.array(ts)
             diff = ts[1:] - ts[:-1]
