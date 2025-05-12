@@ -27,7 +27,7 @@ aloha_ise_door:
 
 fd_button_press_topdown_precise:
   dataset_dir: flow_decomp/button_press_topdown_precise
-  episode_len: 500
+  episode_len: 350
   camera_names: 
   - cam_high
   - cam_left_wrist
@@ -35,7 +35,7 @@ fd_button_press_topdown_precise:
 
 fd_button_press_topdown:
   dataset_dir: flow_decomp/button_press_topdown
-  episode_len: 500
+  episode_len: 350
   camera_names: 
   - cam_high
   - cam_left_wrist
@@ -43,7 +43,7 @@ fd_button_press_topdown:
 
 fd_assembly:
   dataset_dir: flow_decomp/assembly
-  episode_len: 500
+  episode_len: 350
   camera_names:
   - cam_high
   - cam_left_wrist

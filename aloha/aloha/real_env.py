@@ -93,7 +93,7 @@ class RealEnv:
             gripper_name="gripper",
             robot_name="follower_left",
             node=node,
-            iterative_update_fk=False,
+            iterative_update_fk=True,
             logging_level=logging_level,
         )
         self.follower_bot_right = InterbotixManipulatorXS(
@@ -102,7 +102,7 @@ class RealEnv:
             gripper_name="gripper",
             robot_name="follower_right",
             node=node,
-            iterative_update_fk=False,
+            iterative_update_fk=True,
             logging_level=logging_level,
         )
 
@@ -327,6 +327,7 @@ class RealEnv:
         get_base_vel=False,
         get_obs=True,
         use_delta_ee=False,
+        moving_time=DT,
     ):
         state_len = int(len(action) / 2)
         left_action = action[:state_len]
@@ -337,16 +338,37 @@ class RealEnv:
 
         if use_delta_ee:
             left_action, left_gripper_qpos, right_action, right_gripper_qpos = (
-                self.ee_pose_step(left_action, self.previous_ee_pose)
+                self.ee_pose_step(action, self.previous_ee_pose)
             )
-        if delta_ee_pose:
+        if use_delta_ee:
             if self.arm_mask[0]:
-                self.follower_bot_left.arm.set_ee_pose_matrix(
-                    left_action, blocking=False
+                curr_left_joint = self.follower_bot_left.arm.get_joint_positions()
+                print("curr_left_joint before ee pose matrix", curr_left_joint)
+                theta_list, success = self.follower_bot_left.arm.set_ee_pose_matrix(
+                    left_action,
+                    custom_guess=curr_left_joint,
+                    execute=False,
                 )
+                curr_left_joint = self.follower_bot_left.arm.get_joint_positions()
+                print("curr_left_joint after ee pose matrix", curr_left_joint)
+                if not success:
+                    print("Failed to set left arm ee pose")
+                else:
+                    num_steps = int(np.ceil(moving_time / DT))
+                    traj_list = np.linspace(curr_left_joint, theta_list, num_steps)
+                    print(f"{curr_left_joint} -> {theta_list}")
+                    for t in range(num_steps):
+                        success = self.follower_bot_left.arm.set_joint_positions(
+                            traj_list[t], blocking=False
+                        )
+                        time.sleep(DT)
             if self.arm_mask[1]:
+                curr_right_joint = self.follower_bot_right.arm.get_joint_positions()
                 self.follower_bot_right.arm.set_ee_pose_matrix(
-                    right_action, blocking=False
+                    right_action,
+                    blocking=False,
+                    custom_guess=curr_right_joint,
+                    execute=False,
                 )
         else:
             if self.arm_mask[0]:

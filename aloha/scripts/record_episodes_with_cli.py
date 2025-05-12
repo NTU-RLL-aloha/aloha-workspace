@@ -551,6 +551,7 @@ def save_dataset(
         "/observations/qpos": [],
         "/observations/qvel": [],
         "/observations/effort": [],
+        "/observations/eepose": [],
         "/actions/joint_action": [],
         "/actions/delta_eepose": [],
         "/actions/base_action": [],
@@ -571,6 +572,7 @@ def save_dataset(
         data_dict["/observations/qpos"].append(ts.observation["qpos"])
         data_dict["/observations/qvel"].append(ts.observation["qvel"])
         data_dict["/observations/effort"].append(ts.observation["effort"])
+        data_dict["/observations/eepose"].append(ts.observation["eepose"])
         data_dict["/actions/joint_action"].append(action)
         data_dict["/actions/delta_eepose"].append(
             timesteps[0].observation[
