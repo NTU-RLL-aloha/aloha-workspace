@@ -41,4 +41,4 @@ sh ./scripts/process_data.sh 0
 
 ## TODOs
 
-- [ ] Modify the implementation of compression in `visualize_episodes.py` and `gather_task_data.py`
+- [x] Modify the implementation of compression in `visualize_episodes.py` and `gather_task_data.py`
