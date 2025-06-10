@@ -343,25 +343,27 @@ class RealEnv:
         if use_delta_ee:
             if self.arm_mask[0]:
                 curr_left_joint = self.follower_bot_left.arm.get_joint_positions()
-                print("curr_left_joint before ee pose matrix", curr_left_joint)
+                # print("curr_left_joint before ee pose matrix", curr_left_joint)
                 theta_list, success = self.follower_bot_left.arm.set_ee_pose_matrix(
                     left_action,
                     custom_guess=curr_left_joint,
-                    execute=False,
+                    moving_time=moving_time,
+                    blocking=False,
+                    # execute=False,
                 )
-                curr_left_joint = self.follower_bot_left.arm.get_joint_positions()
-                print("curr_left_joint after ee pose matrix", curr_left_joint)
+                # curr_left_joint = self.follower_bot_left.arm.get_joint_positions()
+                # print("curr_left_joint after ee pose matrix", curr_left_joint)
                 if not success:
                     print("Failed to set left arm ee pose")
-                else:
-                    num_steps = int(np.ceil(moving_time / DT))
-                    traj_list = np.linspace(curr_left_joint, theta_list, num_steps)
-                    print(f"{curr_left_joint} -> {theta_list}")
-                    for t in range(num_steps):
-                        success = self.follower_bot_left.arm.set_joint_positions(
-                            traj_list[t], blocking=False
-                        )
-                        time.sleep(DT)
+                # else:
+                #     num_steps = int(np.ceil(moving_time / DT))
+                #     traj_list = np.linspace(curr_left_joint, theta_list, num_steps)
+                #     print(f"{curr_left_joint} -> {theta_list}")
+                #     for t in range(num_steps):
+                #         success = self.follower_bot_left.arm.set_joint_positions(
+                #             traj_list[t], blocking=False
+                #         )
+                #         time.sleep(DT)
             if self.arm_mask[1]:
                 curr_right_joint = self.follower_bot_right.arm.get_joint_positions()
                 self.follower_bot_right.arm.set_ee_pose_matrix(
